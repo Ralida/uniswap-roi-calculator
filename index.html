@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uniswap LP ROI Calculator (50/50)</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;max-width:900px;margin:40px auto;padding:0 16px}
+  .box{border:1px solid #eee;border-radius:12px;padding:16px}
+  label{display:block;margin:8px 0}
+  input{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .result{margin-top:16px;padding:12px;border:1px dashed #ccc;border-radius:8px}
+  button{padding:10px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+  small{opacity:.8}
+</style>
+</head>
+<body>
+<h1>Uniswap LP ROI Calculator (50/50)</h1>
+<p>Estimates ROI for a Uniswap V2-style 50/50 pool (e.g., TOKEN/USDC). Includes impermanent loss and simple fee APR.</p>
+
+<div class="box">
+  <div class="grid">
+    <label>Initial price (TOKEN in USD)
+      <input id="p0" type="number" min="0" step="0.00000001" placeholder="e.g. 56.00">
+    </label>
+    <label>New price (TOKEN in USD)
+      <input id="p1" type="number" min="0" step="0.00000001" placeholder="e.g. 62.50">
+    </label>
+    <label>Investment (USD)
+      <input id="usd" type="number" min="0" step="0.01" placeholder="e.g. 1000">
+    </label>
+    <label>Fee APR % (optional)
+      <input id="apr" type="number" min="0" step="0.01" placeholder="e.g. 12">
+    </label>
+    <label>Days in pool
+      <input id="days" type="number" min="0" step="1" placeholder="e.g. 30">
+    </label>
+  </div>
+  <div style="margin-top:12px">
+    <button id="calcBtn">Calculate</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+  <div class="result" id="res" hidden></div>
+  <small>
+    <b>Notes:</b> 2-asset constant-product, 50/50 at entry, zero slippage/IL from deposits/withdrawals, fees applied as APR × days/365 (no compounding).
+  </small>
+</div>
+
+<script>
+const p0=document.getElementById('p0');
+const p1=document.getElementById('p1');
+const usd=document.getElementById('usd');
+const apr=document.getElementById('apr');
+const days=document.getElementById('days');
+const res=document.getElementById('res');
+
+function n(x){ return Number.parseFloat(x||0) || 0; }
+
+function calc(){
+  const P0=n(p0.value), P1=n(p1.value), V0=n(usd.value), APR=n(apr.value)/100, D=n(days.value);
+  if(P0<=0 || P1<=0 || V0<=0){ res.hidden=false; res.innerHTML="Please enter initial price, new price and investment."; return; }
+
+  const r = P1/P0;                    // price change ratio
+  const sqrt_r = Math.sqrt(r);
+
+  // Initial 50/50 amounts:
+  const token0 = (V0/2) / P0;         // TOKEN amount
+  const usd0   =  V0/2;               // USDC amount
+
+  // After price move and rebalancing in a 50/50 pool:
+  // x1 = x0 / sqrt(r), y1 = y0 * sqrt(r)
+  const token1 = token0 / sqrt_r;
+  const usd1   = usd0 * sqrt_r;
+
+  // Values:
+  const hodlValue = (V0/2) * (1 + r);     // just hold TOKEN + USDC
+  const lpValue   = token1 * P1 + usd1;   // LP position value (no fees)
+  // Known identities: lpValue/V0 = sqrt(r), hodlValue/V0 = (1+r)/2
+
+  // Impermanent loss vs HODL:
+  const ilFactor = (2*sqrt_r)/(1+r);   // LP/HODL
+  const ilPct = (ilFactor - 1) * 100;  // negative → loss
+
+  // Fees (simple APR * days/365 applied to initial V0)
+  const feeGain = V0 * APR * (D/365);
+
+  // Totals:
+  const lpFinalWithFees = lpValue + feeGain;
+  const roiNoFees = (lpValue / V0 - 1) * 100;           // = (sqrt(r)-1)*100
+  const roiWithFees = (lpFinalWithFees / V0 - 1) * 100;
+
+  res.hidden=false;
+  res.innerHTML = `
+    <b>Price ratio r = P1/P0:</b> ${r.toFixed(6)} (sqrt(r) = ${sqrt_r.toFixed(6)})<br><br>
+
+    <b>Start:</b> $${V0.toFixed(2)} → TOKEN ${token0.toFixed(6)} + USDC $${usd0.toFixed(2)}<br>
+    <b>After price move (pool rebalanced):</b> TOKEN ${token1.toFixed(6)} + USDC $${usd1.toFixed(2)}<br>
+    <b>LP value (no fees):</b> $${lpValue.toFixed(2)} &nbsp;(<b>ROI:</b> ${roiNoFees.toFixed(2)}%)<br>
+    <b>HODL value (no LP):</b> $${hodlValue.toFixed(2)}<br>
+    <b>Impermanent loss vs HODL:</b> ${ilPct.toFixed(2)}%<br><br>
+
+    <b>Fee gain:</b> $${feeGain.toFixed(2)} (APR ${ (APR*100).toFixed(2)}% for ${D} days)<br>
+    <b>Total LP value with fees:</b> $${lpFinalWithFees.toFixed(2)}<br>
+    <b>Total ROI with fees:</b> ${roiWithFees.toFixed(2)}%
+  `;
+}
+
+function clearAll(){
+  p0.value=p1.value=usd.value=apr.value=days.value="";
+  res.hidden=true; res.innerHTML="";
+}
+
+document.getElementById('calcBtn').onclick=calc;
+document.getElementById('clearBtn').onclick=clearAll;
+</script>
+</body>
+</html>
